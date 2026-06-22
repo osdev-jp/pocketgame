@@ -41,3 +41,6 @@ fp-info-cache
 
 # Local project settings
 *.kicad_prl
+
+# Output of Fablication Toolkit
+/pizza/controller/production
