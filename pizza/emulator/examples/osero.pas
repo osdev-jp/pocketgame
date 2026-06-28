@@ -44,31 +44,31 @@ void input() {
   TEST(ok);
   JZ(skip_up);
   cursor_up();
-  LABEL(skip_up);
+skip_up:
 
   PRESSED(ok, pad, DOWN);
   TEST(ok);
   JZ(skip_down);
   cursor_down();
-  LABEL(skip_down);
+skip_down:
 
   PRESSED(ok, pad, LEFT);
   TEST(ok);
   JZ(skip_left);
   cursor_left();
-  LABEL(skip_left);
+skip_left:
 
   PRESSED(ok, pad, RIGHT);
   TEST(ok);
   JZ(skip_right);
   cursor_right();
-  LABEL(skip_right);
+skip_right:
 
   PRESSED(ok, pad, CONFIRM);
   TEST(ok);
   JZ(skip_confirm);
   try_place();
-  LABEL(skip_confirm);
+skip_confirm:
 }
 
 void cursor_up() {
