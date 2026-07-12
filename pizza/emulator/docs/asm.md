@@ -754,3 +754,7 @@ void cursor_up() {
   DRAW(board);
 }
 ```
+
+> !NOTE!
+> .pasをgccでコンパイルするとLinux / Windows向けのバイナリにできる
+> 逆にpocketgame compilerにするとPocketGame向けのバイナリにする
