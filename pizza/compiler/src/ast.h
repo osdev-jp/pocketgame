@@ -40,6 +40,7 @@ struct Statement {
 			Token *tokens;
 			size_t token_count;
 			Statement *branch;
+			Statement *else_branch;
 		} if_statement;
 
 		struct {

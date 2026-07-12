@@ -64,6 +64,7 @@ void statement_destroy(Statement *statement) {
 	case STATEMENT_IF:
 		free(statement->if_statement.tokens);
 		statement_destroy(statement->if_statement.branch);
+		statement_destroy(statement->if_statement.else_branch);
 		break;
 	case STATEMENT_WHILE:
 		free(statement->while_statement.tokens);

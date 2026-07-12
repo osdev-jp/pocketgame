@@ -442,6 +442,7 @@ static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
 	Token *condition_tokens;
 	size_t condition_token_count;
 	size_t line;
+	Statement *else_branch;
 
 	line = parser->current.line;
 	parser_advance(parser);
@@ -461,6 +462,19 @@ static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
 		return false;
 	}
 
+	else_branch = NULL;
+
+	if (parser_check(parser, TOKEN_IDENTIFIER) &&
+	    token_equals(&parser->current, "else")) {
+		parser_advance(parser);
+
+		if (!parser_parse_statement(parser, &else_branch)) {
+			free(condition_tokens);
+			statement_destroy(then_branch);
+			return false;
+		}
+	}
+
 	if_statement = statement_create(STATEMENT_IF, line);
 
 	if (if_statement == NULL) {
@@ -469,12 +483,14 @@ static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
 
 		free(condition_tokens);
 		statement_destroy(then_branch);
+		statement_destroy(else_branch);
 		return false;
 	}
 
 	if_statement->if_statement.tokens = condition_tokens;
 	if_statement->if_statement.token_count = condition_token_count;
 	if_statement->if_statement.branch = then_branch;
+	if_statement->if_statement.else_branch = else_branch;
 
 	*statement = if_statement;
 	return true;
