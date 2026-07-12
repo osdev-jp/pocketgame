@@ -1,11 +1,8 @@
 # PocketGame library
 PocketGame)のアセンブラをそのままCとして実行できるライブラリです。
 
-## 使い方
+## ビルド
 このリポジトリをクローンします。
-その後、make installを実行すると、ヘッダファイルがインストールされます。
-
-インストール先は、`/usr/local/include/pocketgame.h`になります。
 
 ## 依存ライブラリ
 - libsdl2-dev

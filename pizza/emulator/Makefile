@@ -12,6 +12,8 @@ LIB_SRC		:= $(filter-out src/pocketgame_main.c,$(SRC))
 HEADER		:= $(shell find include -name '*.h')
 OBJ		:= $(patsubst src/%.c,$(OUT)/%.o,$(LIB_SRC))
 
+POCKETGAME_LIB	:= $(TARGET)
+
 EXAMPLE		?= examples/osero.c
 
 ifeq ($(OS),Windows_NT)
@@ -25,7 +27,7 @@ endif
 LIBDIR		:= $(PREFIX)/lib
 INCLUDEDIR	:= $(PREFIX)/include
 
-.PHONY: all run clean install fmt
+.PHONY: all run clean install fmt osero gomoku
 
 all: $(TARGET) fmt
 
@@ -37,22 +39,26 @@ $(OUT)/%.o: src/%.c
 	mkdir -p "$(dir $@)"
 	$(CC) $(CFLAGS) -c "$<" -o "$@"
 
-install: $(TARGET)
-	sudo mkdir -p "$(LIBDIR)"
-	sudo mkdir -p "$(INCLUDEDIR)"
-	sudo cp "$(TARGET)" "$(LIBDIR)/"
-	sudo cp -r include/. "$(INCLUDEDIR)/"
-
 run: osero
 
-osero:
+osero: $(POCKETGAME_LIB)
 	@echo "Running osero example..."
-	@$(CC) $(CFLAGS) examples/osero.c src/pocketgame_main.c -o "$(OUT)/osero" -L"$(OUT)" -lpocketgame $(SDL_LIBS)
+	@$(CC) $(CFLAGS) \
+		examples/osero.c \
+		src/pocketgame_main.c \
+		$(POCKETGAME_LIB) \
+		$(SDL_LIBS) \
+		-o "$(OUT)/osero"
 	@"$(OUT)/osero"
 
-gomoku:
+gomoku: $(POCKETGAME_LIB)
 	@echo "Running gomoku example..."
-	@$(CC) $(CFLAGS) examples/gomoku.c src/pocketgame_main.c -o "$(OUT)/gomoku" -L"$(OUT)" -lpocketgame $(SDL_LIBS)
+	@$(CC) $(CFLAGS) \
+		examples/gomoku.c \
+		src/pocketgame_main.c \
+		$(POCKETGAME_LIB) \
+		$(SDL_LIBS) \
+		-o "$(OUT)/gomoku"
 	@"$(OUT)/gomoku"
 
 fmt:
