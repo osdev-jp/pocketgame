@@ -7,6 +7,7 @@
 static PgInputReader pg_input_reader = 0;
 static PgDrawHandler pg_draw_handler = 0;
 static bool pg_should_stop = false;
+bool __pg_test_result = false;
 
 static bool pg_grid_ensure(PgGrid* grid) {
   if (grid == 0) {
@@ -214,3 +215,5 @@ int pg_run(PgRoutine start, PgRoutine frame) {
   pg_graphic_close();
   return 0;
 }
+
+POCKETGAME_MAIN()

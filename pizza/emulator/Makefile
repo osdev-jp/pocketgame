@@ -14,6 +14,16 @@ OBJ		:= $(patsubst src/%.c,$(OUT)/%.o,$(LIB_SRC))
 
 POCKETGAME_LIB	:= $(TARGET)
 
+PCC_DIR		:= $(abspath ../compiler)
+PCC		:= $(PCC_DIR)/out/pcc
+PCC_SOURCE	:= $(PCC_DIR)/examples/osero.c
+PCC_OUT		:= $(PCC_DIR)/examples/osero.pas
+PCC_TARGET	:= $(OUT)/osero-pas
+PCC_LIB_DIR	:= $(abspath ./include)
+PCC_SRC_DIR := $(abspath ./src)
+PCC_HEADER	:= $(PCC_LIB_DIR)/pocketgame.h
+PCC_RUNTIME	:= $(PCC_SRC_DIR)/pocketgame.c
+
 EXAMPLE		?= examples/osero.c
 
 ifeq ($(OS),Windows_NT)
@@ -27,7 +37,7 @@ endif
 LIBDIR		:= $(PREFIX)/lib
 INCLUDEDIR	:= $(PREFIX)/include
 
-.PHONY: all run clean install fmt osero gomoku
+.PHONY: all run pas clean install fmt osero gomoku
 
 all: $(TARGET)
 
@@ -40,6 +50,24 @@ $(OUT)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c "$<" -o "$@"
 
 run: osero
+
+pas: $(POCKETGAME_LIB)
+	@echo "Building pcc..."
+	@$(MAKE) -C "$(PCC_DIR)"
+	@echo "Compiling $(PCC_SOURCE)..."
+	@"$(PCC)" -S "$(PCC_SOURCE)" -o "$(PCC_OUT)"
+	@echo "Building generated PocketGame code..."
+	@mkdir -p "$(OUT)"
+	@$(CC) $(CFLAGS) \
+		-Wno-unused-label \
+		-I"$(PCC_LIB_DIR)" \
+		-include pocketgame.h \
+		-x c "$(PCC_OUT)" \
+		-x none "$(PCC_RUNTIME)" \
+		$(POCKETGAME_LIB) \
+		$(SDL_LIBS) \
+		-o "$(PCC_TARGET)"
+	@"$(PCC_TARGET)"
 
 osero: $(POCKETGAME_LIB)
 	@echo "Running osero example..."

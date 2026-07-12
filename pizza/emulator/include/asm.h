@@ -7,6 +7,7 @@
 
 extern PgRoutine __pg_on_start;
 extern PgRoutine __pg_on_frame;
+extern bool __pg_test_result;
 
 #define GAME(name) \
   const char* pg_game_name(void) { return #name; }
@@ -61,6 +62,22 @@ extern PgRoutine __pg_on_frame;
 #define SUB(dst, value) ((dst) -= (value))
 
 #define SWAP(a, b) pg_swap_int(&(a), &(b))
+
+#define TEST(value) (__pg_test_result = !!(value))
+
+#define JZ(label) \
+	do { \
+		if (!__pg_test_result) \
+			goto label; \
+	} while (0)
+
+#define JNZ(label) \
+	do { \
+		if (__pg_test_result) \
+			goto label; \
+	} while (0)
+
+#define JMP(label) goto label
 
 #define RUN() pg_run(__pg_on_start, __pg_on_frame)
 
