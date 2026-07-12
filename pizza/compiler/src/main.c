@@ -107,6 +107,7 @@ int main(int argc, char **argv) {
 
 	while (parser_next_declaration(&parser, &declaration)) {
 		print_declaration(&declaration);
+		declaration_destroy(&declaration);
 	}
 
 	free(source);

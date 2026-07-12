@@ -1,6 +1,7 @@
 #ifndef POCKETGAME_PARSER_H
 #define POCKETGAME_PARSER_H
 
+#include "ast.h"
 #include "lexer.h"
 #include "token.h"
 #include <stdbool.h>
@@ -16,6 +17,7 @@ typedef struct {
 	Token name;
 	Token return_type;
 	size_t line;
+	Statement *body;
 } Declaration;
 
 typedef struct {
@@ -28,5 +30,6 @@ typedef struct {
 
 void parser_init(Parser *parser, const char *input_path, const char *source);
 bool parser_next_declaration(Parser *parser, Declaration *declaration);
+void declaration_destroy(Declaration *declaration);
 
 #endif

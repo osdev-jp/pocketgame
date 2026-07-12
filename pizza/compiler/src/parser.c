@@ -1,6 +1,16 @@
 #include "parser.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+typedef struct {
+	Token *items;
+	size_t count;
+	size_t capacity;
+} TokenList;
+
+static bool parser_parse_statement(Parser *parser, Statement **statement);
+static bool parser_parse_block_statement(Parser *parser, Statement **statement);
 
 static bool token_equals(const Token *token, const char *text) {
 	size_t length;
@@ -113,6 +123,7 @@ static bool parser_parse_directive(Parser *parser, Declaration *declaration) {
 	declaration->type = DECLARATION_DIRECTIVE;
 	declaration->name = parser->current;
 	declaration->line = parser->current.line;
+	declaration->body = NULL;
 
 	parser_advance(parser);
 
@@ -131,6 +142,7 @@ static bool parser_parse_directive(Parser *parser, Declaration *declaration) {
 }
 
 static bool parser_parse_function(Parser *parser, Declaration *declaration) {
+	Statement *body;
 	Token return_type;
 	Token name;
 
@@ -155,6 +167,7 @@ static bool parser_parse_function(Parser *parser, Declaration *declaration) {
 	declaration->name = name;
 	declaration->return_type = return_type;
 	declaration->line = return_type.line;
+	declaration->body = NULL;
 
 	if (parser_match(parser, TOKEN_SEMICOLON)) {
 		declaration->type = DECLARATION_FUNCTION_PROTOTYPE;
@@ -162,12 +175,15 @@ static bool parser_parse_function(Parser *parser, Declaration *declaration) {
 	}
 
 	if (parser_check(parser, TOKEN_LEFT_BRACE)) {
-		declaration->type = DECLARATION_FUNCTION_DEFINITION;
+		body = NULL;
 
-		return parser_skip_balanced(parser, TOKEN_LEFT_BRACE,
-					    TOKEN_RIGHT_BRACE,
-					    "expected '{' before function body",
-					    "expected '}' after function body");
+		if (!parser_parse_block_statement(parser, &body)) {
+			return false;
+		}
+
+		declaration->type = DECLARATION_FUNCTION_DEFINITION;
+		declaration->body = body;
+		return true;
 	}
 
 	parser_error_at(parser, &parser->current,
@@ -209,4 +225,353 @@ bool parser_next_declaration(Parser *parser, Declaration *declaration) {
 			"expected directive or function declaration");
 
 	return false;
+}
+
+static void token_list_init(TokenList *list) {
+	list->items = NULL;
+	list->count = 0;
+	list->capacity = 0;
+}
+
+static void token_list_destroy(TokenList *list) {
+	free(list->items);
+	token_list_init(list);
+}
+
+static bool token_list_append(Parser *parser, TokenList *list, Token token) {
+	Token *items;
+	size_t capacity;
+
+	if (list->count == list->capacity) {
+		capacity = list->capacity == 0 ? 8 : list->capacity * 2;
+
+		items = realloc(list->items, capacity * sizeof(*list->items));
+
+		if (items == NULL) {
+			parser_error_at(parser, &parser->current,
+					"failed to alloc token list");
+			return false;
+		}
+
+		list->items = items;
+		list->capacity = capacity;
+	}
+
+	list->items[list->count] = token;
+	list->count++;
+
+	return true;
+}
+
+static Token *token_list_take(TokenList *list, size_t *count) {
+	Token *items;
+
+	items = list->items;
+	*count = list->count;
+
+	token_list_init(list);
+	return items;
+}
+
+static bool parser_collect_parenthesized_tokens(Parser *parser,
+						Token **tokens,
+						size_t *token_count) {
+	TokenList list;
+	size_t depth;
+
+	token_list_init(&list);
+
+	if (!parser_consume(parser, TOKEN_LEFT_PAREN, "expected '('")) {
+		return false;
+	}
+
+	depth = 1;
+
+	while (depth > 0) {
+		if (parser_check(parser, TOKEN_EOF)) {
+			parser_error_at(parser, &parser->current,
+					"expected ')'");
+
+			token_list_destroy(&list);
+			return false;
+		}
+
+		if (parser_check(parser, TOKEN_LEFT_PAREN)) {
+			depth++;
+		} else if (parser_check(parser, TOKEN_RIGHT_PAREN)) {
+			depth--;
+
+			if (depth == 0) {
+				parser_advance(parser);
+				break;
+			}
+		}
+
+		if (!token_list_append(parser, &list, parser->current)) {
+			token_list_destroy(&list);
+			return false;
+		}
+
+		parser_advance(parser);
+	}
+
+	*tokens = token_list_take(&list, token_count);
+	return true;
+}
+
+static bool parser_collect_until_semicolon(Parser *parser,
+					   Token **tokens,
+					   size_t *token_count) {
+	TokenList list;
+	size_t parenthesis_depth;
+	size_t bracket_depth;
+
+	token_list_init(&list);
+	parenthesis_depth = 0;
+	bracket_depth = 0;
+
+	while (!parser_check(parser, TOKEN_EOF)) {
+		if (parser_check(parser, TOKEN_SEMICOLON) &&
+		    parenthesis_depth == 0 && bracket_depth == 0) {
+			parser_advance(parser);
+
+			*tokens = token_list_take(&list, token_count);
+			return true;
+		}
+
+		if (parser_check(parser, TOKEN_LEFT_BRACE) ||
+		    parser_check(parser, TOKEN_RIGHT_BRACE)) {
+			parser_error_at(parser, &parser->current,
+					"expected ';' before block boundary");
+
+			token_list_destroy(&list);
+			return false;
+		}
+
+		if (parser_check(parser, TOKEN_LEFT_PAREN)) {
+			parenthesis_depth++;
+		} else if (parser_check(parser, TOKEN_RIGHT_PAREN)) {
+			if (parenthesis_depth == 0) {
+				parser_error_at(parser, &parser->current,
+						"unexpected ')'");
+
+				token_list_destroy(&list);
+				return false;
+			}
+
+			parenthesis_depth--;
+		} else if (parser_check(parser, TOKEN_LEFT_BRACKET)) {
+			bracket_depth++;
+		} else if (parser_check(parser, TOKEN_RIGHT_BRACKET)) {
+			if (bracket_depth == 0) {
+				parser_error_at(parser, &parser->current,
+						"unexpected ']'");
+
+				token_list_destroy(&list);
+				return false;
+			}
+
+			bracket_depth--;
+		}
+
+		if (!token_list_append(parser, &list, parser->current)) {
+			token_list_destroy(&list);
+			return false;
+		}
+
+		parser_advance(parser);
+	}
+
+	parser_error_at(parser, &parser->current, "expected ';'");
+
+	token_list_destroy(&list);
+	return false;
+}
+
+static bool parser_parse_block_statement(Parser *parser,
+					 Statement **statement) {
+	Statement *block;
+	Statement *child;
+
+	block = statement_create(STATEMENT_BLOCK, parser->current.line);
+
+	if (block == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate block statement");
+
+		return false;
+	}
+
+	if (!parser_consume(parser, TOKEN_LEFT_BRACE, "expected '{'")) {
+		statement_destroy(block);
+		return false;
+	}
+
+	while (!parser_check(parser, TOKEN_RIGHT_BRACE) &&
+	       !parser_check(parser, TOKEN_EOF)) {
+		child = NULL;
+
+		if (!parser_parse_statement(parser, &child)) {
+			statement_destroy(block);
+			return false;
+		}
+
+		if (statement_list_append(&block->block, child) != 0) {
+			parser_error_at(parser, &parser->current,
+					"failed to append statement");
+
+			statement_destroy(child);
+			statement_destroy(block);
+			return false;
+		}
+	}
+
+	if (!parser_consume(parser, TOKEN_RIGHT_BRACE,
+			    "expected '}' after block")) {
+		statement_destroy(block);
+		return false;
+	}
+
+	*statement = block;
+	return true;
+}
+
+static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
+	Statement *if_statement;
+	Statement *then_branch;
+	Token *condition_tokens;
+	size_t condition_token_count;
+	size_t line;
+
+	line = parser->current.line;
+	parser_advance(parser);
+
+	condition_tokens = NULL;
+	condition_token_count = 0;
+
+	if (!parser_collect_parenthesized_tokens(parser, &condition_tokens,
+						 &condition_token_count)) {
+		return false;
+	}
+
+	then_branch = NULL;
+
+	if (!parser_parse_statement(parser, &then_branch)) {
+		free(condition_tokens);
+		return false;
+	}
+
+	if_statement = statement_create(STATEMENT_IF, line);
+
+	if (if_statement == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate if statement");
+
+		free(condition_tokens);
+		statement_destroy(then_branch);
+		return false;
+	}
+
+	if_statement->if_statement.tokens = condition_tokens;
+	if_statement->if_statement.token_count =
+		condition_token_count;
+	if_statement->if_statement.branch = then_branch;
+
+	*statement = if_statement;
+	return true;
+}
+
+static bool parser_parse_return_statement(Parser *parser,
+					  Statement **statement) {
+	Statement *return_statement;
+	Token *tokens;
+	size_t token_count;
+	size_t line;
+
+	line = parser->current.line;
+	parser_advance(parser);
+
+	tokens = NULL;
+	token_count = 0;
+
+	if (!parser_collect_until_semicolon(parser, &tokens, &token_count)) {
+		return false;
+	}
+
+	return_statement = statement_create(STATEMENT_RETURN, line);
+
+	if (return_statement == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate return statement");
+
+		free(tokens);
+		return false;
+	}
+
+	return_statement->return_statement.tokens = tokens;
+	return_statement->return_statement.token_count = token_count;
+
+	*statement = return_statement;
+	return true;
+}
+
+static bool parser_parse_expression_statement(Parser *parser,
+					      Statement **statement) {
+	Statement *expression_statement;
+	Token *tokens;
+	size_t token_count;
+	size_t line;
+
+	line = parser->current.line;
+	tokens = NULL;
+	token_count = 0;
+
+	if (!parser_collect_until_semicolon(parser, &tokens, &token_count)) {
+		return false;
+	}
+
+	expression_statement = statement_create(STATEMENT_EXPRESSION, line);
+
+	if (expression_statement == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate expression statement");
+
+		free(tokens);
+		return false;
+	}
+
+	expression_statement->expression.tokens = tokens;
+	expression_statement->expression.token_count = token_count;
+
+	*statement = expression_statement;
+	return true;
+}
+
+static bool parser_parse_statement(Parser *parser, Statement **statement) {
+	if (parser_check(parser, TOKEN_LEFT_BRACE)) {
+		return parser_parse_block_statement(parser, statement);
+	}
+
+	if (parser_check(parser, TOKEN_IDENTIFIER) &&
+	    token_equals(&parser->current, "if")) {
+		return parser_parse_if_statement(parser, statement);
+	}
+
+	if (parser_check(parser, TOKEN_IDENTIFIER) &&
+	    token_equals(&parser->current, "return")) {
+		return parser_parse_return_statement(parser, statement);
+	}
+
+	if (parser_check(parser, TOKEN_RIGHT_BRACE)) {
+		parser_error_at(parser, &parser->current, "unexpected '}'");
+
+		return false;
+	}
+
+	return parser_parse_expression_statement(parser, statement);
+}
+
+void declaration_destroy(Declaration *declaration) {
+	statement_destroy(declaration->body);
+	declaration->body = NULL;
 }
