@@ -525,6 +525,50 @@ static bool parser_parse_while_statement(Parser *parser,
 	return true;
 }
 
+static bool parser_parse_for_statement(Parser *parser, Statement **statement) {
+	Statement *for_statement;
+	Statement *branch;
+	Token *tokens;
+	size_t token_count;
+	size_t line;
+
+	line = parser->current.line;
+	parser_advance(parser);
+
+	tokens = NULL;
+	token_count = 0;
+
+	if (!parser_collect_parenthesized_tokens(parser, &tokens,
+						 &token_count)) {
+		return false;
+	}
+
+	branch = NULL;
+
+	if (!parser_parse_statement(parser, &branch)) {
+		free(tokens);
+		return false;
+	}
+
+	for_statement = statement_create(STATEMENT_FOR, line);
+
+	if (for_statement == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate for statement");
+
+		free(tokens);
+		statement_destroy(branch);
+		return false;
+	}
+
+	for_statement->for_statement.tokens = tokens;
+	for_statement->for_statement.token_count = token_count;
+	for_statement->for_statement.branch = branch;
+
+	*statement = for_statement;
+	return true;
+}
+
 static bool parser_parse_return_statement(Parser *parser,
 					  Statement **statement) {
 	Statement *return_statement;
@@ -604,6 +648,11 @@ static bool parser_parse_statement(Parser *parser, Statement **statement) {
 	if (parser_check(parser, TOKEN_IDENTIFIER) &&
 	    token_equals(&parser->current, "while")) {
 		return parser_parse_while_statement(parser, statement);
+	}
+
+	if (parser_check(parser, TOKEN_IDENTIFIER) &&
+	    token_equals(&parser->current, "for")) {
+		return parser_parse_for_statement(parser, statement);
 	}
 
 	if (parser_check(parser, TOKEN_IDENTIFIER) &&
