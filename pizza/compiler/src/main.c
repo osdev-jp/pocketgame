@@ -1,3 +1,4 @@
+#include "debug.h"
 #include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,30 +64,6 @@ static char *read_file(const char *path) {
 	return buffer;
 }
 
-static const char *declaration_type_name(DeclarationType type) {
-	switch (type) {
-	case DECLARATION_DIRECTIVE: return "directive";
-	case DECLARATION_FUNCTION_PROTOTYPE: return "function prototype";
-	case DECLARATION_FUNCTION_DEFINITION: return "function definition";
-	}
-
-	return "unknown";
-}
-
-static void print_declaration(const Declaration *declaration) {
-	printf("%zu: %-20s %.*s", declaration->line,
-	       declaration_type_name(declaration->type),
-	       (int)declaration->name.length, declaration->name.start);
-
-	if (declaration->type == DECLARATION_FUNCTION_PROTOTYPE ||
-	    declaration->type == DECLARATION_FUNCTION_DEFINITION) {
-		printf(" -> %.*s", (int)declaration->return_type.length,
-		       declaration->return_type.start);
-	}
-
-	putchar('\n');
-}
-
 int main(int argc, char **argv) {
 	const char *input_path;
 	char *source;
@@ -106,7 +83,7 @@ int main(int argc, char **argv) {
 	parser_init(&parser, input_path, source);
 
 	while (parser_next_declaration(&parser, &declaration)) {
-		print_declaration(&declaration);
+		ast_dump_declaration(&declaration);
 		declaration_destroy(&declaration);
 	}
 
