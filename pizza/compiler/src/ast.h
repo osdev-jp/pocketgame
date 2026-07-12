@@ -23,6 +23,12 @@ typedef enum {
 	FOR_INITIALIZER_VARIABLE,
 } ForInitializerType;
 
+typedef enum {
+	DECLARATION_DIRECTIVE,
+	DECLARATION_FUNCTION_PROTOTYPE,
+	DECLARATION_FUNCTION_DEFINITION,
+} DeclarationType;
+
 typedef struct Statement Statement;
 
 typedef struct {
@@ -75,10 +81,21 @@ struct Statement {
 	};
 };
 
+typedef struct {
+	DeclarationType type;
+	Token name;
+	Token return_type;
+	Token *tokens;
+	size_t token_count;
+	Statement *body;
+	size_t line;
+} Declaration;
+
 void statement_list_init(StatementList *list);
 void statement_list_destroy(StatementList *list);
 int statement_list_append(StatementList *list, Statement *item);
 Statement *statement_create(StatementType type, size_t line);
 void statement_destroy(Statement *statement);
+void declaration_destroy(Declaration *declaration);
 
 #endif

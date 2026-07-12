@@ -12,6 +12,9 @@ typedef struct {
 static bool parser_parse_statement(Parser *parser, Statement **statement);
 static bool parser_parse_block_statement(Parser *parser, Statement **statement);
 static bool parser_is_type_name(const Token *token);
+static bool parser_collect_parenthesized_tokens(Parser *parser,
+						Token **tokens,
+						size_t *token_count);
 
 static bool token_equals(const Token *token, const char *text) {
 	size_t length;
@@ -86,66 +89,45 @@ parser_consume(Parser *parser, TokenType type, const char *message) {
 	return true;
 }
 
-static bool parser_skip_balanced(Parser *parser,
-				 TokenType open_type,
-				 TokenType close_type,
-				 const char *open_message,
-				 const char *close_message) {
-	size_t depth;
-
-	if (!parser_consume(parser, open_type, open_message)) { return false; }
-
-	depth = 1;
-
-	while (depth > 0) {
-		if (parser_check(parser, TOKEN_EOF)) {
-			parser_error_at(parser, &parser->current,
-					close_message);
-			return false;
-		}
-
-		if (parser_match(parser, open_type)) {
-			depth++;
-			continue;
-		}
-
-		if (parser_match(parser, close_type)) {
-			depth--;
-			continue;
-		}
-
-		parser_advance(parser);
-	}
-
-	return true;
-}
-
 static bool parser_parse_directive(Parser *parser, Declaration *declaration) {
+	Token *tokens;
+	size_t token_count;
+
 	declaration->type = DECLARATION_DIRECTIVE;
 	declaration->name = parser->current;
 	declaration->line = parser->current.line;
 	declaration->body = NULL;
+	declaration->tokens = NULL;
+	declaration->token_count = 0;
 
 	parser_advance(parser);
 
-	if (!parser_skip_balanced(parser, TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
-				  "expected '(' after directive name",
-				  "expected ')' after directive arguments")) {
+	tokens = NULL;
+	token_count = 0;
+
+	if (!parser_collect_parenthesized_tokens(parser, &tokens,
+						 &token_count)) {
 		return false;
 	}
 
 	if (!parser_consume(parser, TOKEN_SEMICOLON,
 			    "expected ';' after directive")) {
+		free(tokens);
 		return false;
 	}
+
+	declaration->tokens = tokens;
+	declaration->token_count = token_count;
 
 	return true;
 }
 
 static bool parser_parse_function(Parser *parser, Declaration *declaration) {
 	Statement *body;
+	Token *parameters;
 	Token return_type;
 	Token name;
+	size_t parameter_count;
 
 	return_type = parser->current;
 	parser_advance(parser);
@@ -159,15 +141,19 @@ static bool parser_parse_function(Parser *parser, Declaration *declaration) {
 	name = parser->current;
 	parser_advance(parser);
 
-	if (!parser_skip_balanced(parser, TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
-				  "expected '(' after function name",
-				  "expected ')' after function parameters")) {
+	parameters = NULL;
+	parameter_count = 0;
+
+	if (!parser_collect_parenthesized_tokens(parser, &parameters,
+						 &parameter_count)) {
 		return false;
 	}
 
 	declaration->name = name;
 	declaration->return_type = return_type;
 	declaration->line = return_type.line;
+	declaration->tokens = parameters;
+	declaration->token_count = parameter_count;
 	declaration->body = NULL;
 
 	if (parser_match(parser, TOKEN_SEMICOLON)) {
@@ -179,6 +165,9 @@ static bool parser_parse_function(Parser *parser, Declaration *declaration) {
 		body = NULL;
 
 		if (!parser_parse_block_statement(parser, &body)) {
+			free(parameters);
+			declaration->tokens = NULL;
+			declaration->token_count = 0;
 			return false;
 		}
 
@@ -189,6 +178,10 @@ static bool parser_parse_function(Parser *parser, Declaration *declaration) {
 
 	parser_error_at(parser, &parser->current,
 			"expected ';' or function body");
+
+	free(parameters);
+	declaration->tokens = NULL;
+	declaration->token_count = 0;
 
 	return false;
 }
@@ -1050,6 +1043,9 @@ static bool parser_parse_statement(Parser *parser, Statement **statement) {
 }
 
 void declaration_destroy(Declaration *declaration) {
+	free(declaration->tokens);
 	statement_destroy(declaration->body);
+	declaration->tokens = NULL;
+	declaration->token_count = 0;
 	declaration->body = NULL;
 }
