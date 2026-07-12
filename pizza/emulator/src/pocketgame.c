@@ -215,5 +215,3 @@ int pg_run(PgRoutine start, PgRoutine frame) {
   pg_graphic_close();
   return 0;
 }
-
-POCKETGAME_MAIN()

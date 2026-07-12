@@ -63,7 +63,7 @@ pas: $(POCKETGAME_LIB)
 		-I"$(PCC_LIB_DIR)" \
 		-include pocketgame.h \
 		-x c "$(PCC_OUT)" \
-		-x none "$(PCC_RUNTIME)" \
+		-x none src/pocketgame_main.c \
 		$(POCKETGAME_LIB) \
 		$(SDL_LIBS) \
 		-o "$(PCC_TARGET)"
