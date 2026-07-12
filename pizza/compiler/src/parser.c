@@ -619,6 +619,32 @@ static bool parser_parse_return_statement(Parser *parser,
 	return true;
 }
 
+static bool parser_parse_jump_statement(Parser *parser,
+					Statement **statement,
+					const StatementType type) {
+	Statement *jump_statement;
+	size_t line;
+
+	line = parser->current.line;
+	parser_advance(parser);
+
+	if (!parser_consume(parser, TOKEN_SEMICOLON,
+			    "expected ';' after jump statement")) {
+		return false;
+	}
+
+	jump_statement = statement_create(type, line);
+
+	if (jump_statement == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate jump statement");
+		return false;
+	}
+
+	*statement = jump_statement;
+	return true;
+}
+
 static bool parser_parse_expression_statement(Parser *parser,
 					      Statement **statement) {
 	Statement *expression_statement;
@@ -669,6 +695,18 @@ static bool parser_parse_statement(Parser *parser, Statement **statement) {
 	if (parser_check(parser, TOKEN_IDENTIFIER) &&
 	    token_equals(&parser->current, "for")) {
 		return parser_parse_for_statement(parser, statement);
+	}
+
+	if (parser_check(parser, TOKEN_IDENTIFIER) &&
+	    token_equals(&parser->current, "continue")) {
+		return parser_parse_jump_statement(parser, statement,
+						   STATEMENT_CONTINUE);
+	}
+
+	if (parser_check(parser, TOKEN_IDENTIFIER) &&
+	    token_equals(&parser->current, "break")) {
+		return parser_parse_jump_statement(parser, statement,
+						   STATEMENT_BREAK);
 	}
 
 	if (parser_check(parser, TOKEN_IDENTIFIER) &&

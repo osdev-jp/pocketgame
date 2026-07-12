@@ -57,6 +57,16 @@ static void ast_dump_statement(const Statement *statement, size_t depth) {
 		putchar('\n');
 		break;
 
+	case STATEMENT_CONTINUE:
+		ast_dump_indent(depth);
+		puts("CONTINUE");
+		break;
+
+	case STATEMENT_BREAK:
+		ast_dump_indent(depth);
+		puts("BREAK");
+		break;
+
 	case STATEMENT_IF:
 		ast_dump_indent(depth);
 		fputs("IF: ", stdout);

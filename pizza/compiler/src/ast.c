@@ -61,6 +61,8 @@ void statement_destroy(Statement *statement) {
 	switch (statement->type) {
 	case STATEMENT_EXPRESSION: free(statement->expression.tokens); break;
 	case STATEMENT_RETURN: free(statement->return_statement.tokens); break;
+	case STATEMENT_BREAK:
+	case STATEMENT_CONTINUE: break;
 	case STATEMENT_IF:
 		free(statement->if_statement.tokens);
 		statement_destroy(statement->if_statement.branch);
