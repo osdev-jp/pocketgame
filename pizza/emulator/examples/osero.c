@@ -144,9 +144,7 @@ void try_place(void) {
 
 void switch_turn(void) { SWAP(turn, enemy); }
 
-bool is_in_board(int x, int y) {
-  return x >= 0 && x < 8 && y >= 0 && y < 8;
-}
+bool is_in_board(int x, int y) { return x >= 0 && x < 8 && y >= 0 && y < 8; }
 
 int count_flips_in_direction(int x, int y, int dx, int dy, int stone) {
   int cx;
