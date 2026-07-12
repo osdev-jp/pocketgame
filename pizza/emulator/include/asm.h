@@ -65,17 +65,15 @@ extern bool __pg_test_result;
 
 #define TEST(value) (__pg_test_result = !!(value))
 
-#define JZ(label) \
-	do { \
-		if (!__pg_test_result) \
-			goto label; \
-	} while (0)
+#define JZ(label)                      \
+  do {                                 \
+    if (!__pg_test_result) goto label; \
+  } while (0)
 
-#define JNZ(label) \
-	do { \
-		if (__pg_test_result) \
-			goto label; \
-	} while (0)
+#define JNZ(label)                    \
+  do {                                \
+    if (__pg_test_result) goto label; \
+  } while (0)
 
 #define JMP(label) goto label
 
