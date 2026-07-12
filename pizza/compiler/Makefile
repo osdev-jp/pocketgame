@@ -21,7 +21,7 @@ clean:
 	rm -rf $(OUT)
 
 run: $(TARGET)
-	@./$(TARGET)
+	@./$(TARGET) $(shell pwd)/examples/osero.c
 
 fmt:
-	clang-format -i $(SRC) src/*.c src/*.h
+	clang-format -i $(SRC) src/*.c src/*.h examples/*.c
