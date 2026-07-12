@@ -18,10 +18,12 @@ $(OUT)/%.o: src/%.c
 	@$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OUT)
+	@echo "Cleaning up: $(OUT)"
+	@rm -rf $(OUT)
 
 run: $(TARGET)
 	@./$(TARGET) $(shell pwd)/examples/osero.c
 
 fmt:
-	clang-format -i $(SRC) src/*.c src/*.h examples/*.c
+	@echo "Formatting..."
+	@clang-format -i $(SRC) src/*.c src/*.h examples/*.c
