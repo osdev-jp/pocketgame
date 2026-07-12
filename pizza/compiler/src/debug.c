@@ -43,6 +43,25 @@ static void ast_dump_statement(const Statement *statement, size_t depth) {
 		putchar('\n');
 		break;
 
+	case STATEMENT_VARIABLE:
+		ast_dump_indent(depth);
+
+		printf("VARIABLE: %.*s %.*s",
+		       (int)statement->variable.type.length,
+		       statement->variable.type.start,
+		       (int)statement->variable.name.length,
+		       statement->variable.name.start);
+
+		if (statement->variable.token_count > 0) {
+			fputs(" = ", stdout);
+
+			ast_dump_tokens(statement->variable.tokens,
+					statement->variable.token_count);
+		}
+
+		putchar('\n');
+		break;
+
 	case STATEMENT_RETURN:
 		ast_dump_indent(depth);
 

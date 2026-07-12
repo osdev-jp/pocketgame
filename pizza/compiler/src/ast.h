@@ -6,6 +6,7 @@
 
 typedef enum {
 	STATEMENT_EXPRESSION,
+	STATEMENT_VARIABLE,
 	STATEMENT_RETURN,
 	STATEMENT_CONTINUE,
 	STATEMENT_BREAK,
@@ -32,6 +33,13 @@ struct Statement {
 			Token *tokens;
 			size_t token_count;
 		} expression;
+
+		struct {
+			Token type;
+			Token name;
+			Token *tokens;
+			size_t token_count;
+		} variable;
 
 		struct {
 			Token *tokens;

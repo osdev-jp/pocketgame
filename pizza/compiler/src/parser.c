@@ -645,6 +645,89 @@ static bool parser_parse_jump_statement(Parser *parser,
 	return true;
 }
 
+static bool parser_parse_variable_statement(Parser *parser,
+					    Statement **statement) {
+	Statement *variable_statement;
+	TokenList initializer;
+	Token type;
+	Token name;
+	size_t line;
+
+	type = parser->current;
+	line = type.line;
+	parser_advance(parser);
+
+	if (!parser_check(parser, TOKEN_IDENTIFIER)) {
+		parser_error_at(parser, &parser->current,
+				"expected variable name");
+		return false;
+	}
+
+	name = parser->current;
+	parser_advance(parser);
+
+	variable_statement = statement_create(STATEMENT_VARIABLE, line);
+
+	if (variable_statement == NULL) {
+		parser_error_at(parser, &parser->current,
+				"failed to allocate variable statement");
+		return false;
+	}
+
+	variable_statement->variable.type = type;
+	variable_statement->variable.name = name;
+	variable_statement->variable.tokens = NULL;
+	variable_statement->variable.token_count = 0;
+
+	if (parser_match(parser, TOKEN_SEMICOLON)) {
+		*statement = variable_statement;
+		return true;
+	}
+
+	if (!parser_consume(parser, TOKEN_ASSIGN,
+			    "expected '=' or ';' after variable name")) {
+		statement_destroy(variable_statement);
+		return false;
+	}
+
+	token_list_init(&initializer);
+
+	while (!parser_check(parser, TOKEN_SEMICOLON) &&
+	       !parser_check(parser, TOKEN_EOF)) {
+		if (parser_check(parser, TOKEN_LEFT_BRACE) ||
+		    parser_check(parser, TOKEN_RIGHT_BRACE)) {
+			parser_error_at(
+				parser, &parser->current,
+				"expected ';' after variable declaration");
+
+			token_list_destroy(&initializer);
+			statement_destroy(variable_statement);
+			return false;
+		}
+
+		if (!token_list_append(parser, &initializer, parser->current)) {
+			token_list_destroy(&initializer);
+			statement_destroy(variable_statement);
+			return false;
+		}
+
+		parser_advance(parser);
+	}
+
+	if (!parser_consume(parser, TOKEN_SEMICOLON,
+			    "expected ';' after variable declaration")) {
+		token_list_destroy(&initializer);
+		statement_destroy(variable_statement);
+		return false;
+	}
+
+	variable_statement->variable.tokens = token_list_take(
+		&initializer, &variable_statement->variable.token_count);
+
+	*statement = variable_statement;
+	return true;
+}
+
 static bool parser_parse_expression_statement(Parser *parser,
 					      Statement **statement) {
 	Statement *expression_statement;
@@ -675,6 +758,15 @@ static bool parser_parse_expression_statement(Parser *parser,
 
 	*statement = expression_statement;
 	return true;
+}
+
+static bool parser_is_type_name(const Token *token) {
+	if (token->type != TOKEN_IDENTIFIER) return false;
+
+	// TODO: 他の型も忘れてたら実装
+	return token_equals(token, "int") || token_equals(token, "bool") ||
+	       token_equals(token, "void") || token_equals(token, "char") ||
+	       token_equals(token, "float") || token_equals(token, "double");
 }
 
 static bool parser_parse_statement(Parser *parser, Statement **statement) {
@@ -712,6 +804,10 @@ static bool parser_parse_statement(Parser *parser, Statement **statement) {
 	if (parser_check(parser, TOKEN_IDENTIFIER) &&
 	    token_equals(&parser->current, "return")) {
 		return parser_parse_return_statement(parser, statement);
+	}
+
+	if (parser_is_type_name(&parser->current)) {
+		return parser_parse_variable_statement(parser, statement);
 	}
 
 	if (parser_check(parser, TOKEN_RIGHT_BRACE)) {
