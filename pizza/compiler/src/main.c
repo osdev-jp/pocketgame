@@ -1,5 +1,4 @@
-#include "lexer.h"
-#include "token.h"
+#include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -54,17 +53,35 @@ static char *read_file(const char *path) {
 	}
 
 	buffer[size] = '\0';
-	fclose(file);
+
+	if (fclose(file) != 0) {
+		perror(path);
+		free(buffer);
+		return NULL;
+	}
 
 	return buffer;
 }
 
-static void print_token(const Token *token) {
-	printf("%zu:%zu %-16s", token->line, token->column,
-	       token_type_name(token->type));
+static const char *declaration_type_name(DeclarationType type) {
+	switch (type) {
+	case DECLARATION_DIRECTIVE: return "directive";
+	case DECLARATION_FUNCTION_PROTOTYPE: return "function prototype";
+	case DECLARATION_FUNCTION_DEFINITION: return "function definition";
+	}
 
-	if (token->length > 0) {
-		printf(" \"%.*s\"", (int)token->length, token->start);
+	return "unknown";
+}
+
+static void print_declaration(const Declaration *declaration) {
+	printf("%zu: %-20s %.*s", declaration->line,
+	       declaration_type_name(declaration->type),
+	       (int)declaration->name.length, declaration->name.start);
+
+	if (declaration->type == DECLARATION_FUNCTION_PROTOTYPE ||
+	    declaration->type == DECLARATION_FUNCTION_DEFINITION) {
+		printf(" -> %.*s", (int)declaration->return_type.length,
+		       declaration->return_type.start);
 	}
 
 	putchar('\n');
@@ -73,8 +90,8 @@ static void print_token(const Token *token) {
 int main(int argc, char **argv) {
 	const char *input_path;
 	char *source;
-	Lexer lexer;
-	Token token;
+	Parser parser;
+	Declaration declaration;
 
 	if (argc != 2) {
 		fprintf(stderr, "usage: pcc <input-file>\n");
@@ -86,21 +103,15 @@ int main(int argc, char **argv) {
 
 	if (source == NULL) { return EXIT_FAILURE; }
 
-	lexer_init(&lexer, source);
+	parser_init(&parser, input_path, source);
 
-	do {
-		token = lexer_next_token(&lexer);
-		print_token(&token);
-
-		if (token.type == TOKEN_INVALID) {
-			fprintf(stderr, "%s:%zu:%zu: invalid token\n",
-				input_path, token.line, token.column);
-
-			free(source);
-			return EXIT_FAILURE;
-		}
-	} while (token.type != TOKEN_EOF);
+	while (parser_next_declaration(&parser, &declaration)) {
+		print_declaration(&declaration);
+	}
 
 	free(source);
+
+	if (parser.had_error) { return EXIT_FAILURE; }
+
 	return EXIT_SUCCESS;
 }
