@@ -28,13 +28,22 @@ static char lexer_advance(Lexer *lexer) {
 	return character;
 }
 
-static void lexer_skip_whitespace(Lexer *lexer) {
+static void lexer_skip_preprocessor_line(Lexer *lexer) {
+	while (!lexer_is_at_end(lexer) && lexer_peek(lexer) != '\n') {
+		lexer_advance(lexer);
+	}
+
+	if (lexer_peek(lexer) == '\n') { lexer_advance(lexer); }
+}
+
+static void lexer_skip_ignored(Lexer *lexer) {
 	while (!lexer_is_at_end(lexer)) {
 		switch (lexer_peek(lexer)) {
 		case ' ':
 		case '\t':
 		case '\r':
 		case '\n': lexer_advance(lexer); break;
+		case '#': lexer_skip_preprocessor_line(lexer); break;
 		default: return;
 		}
 	}
@@ -132,7 +141,7 @@ Token lexer_next_token(Lexer *lexer) {
 	size_t column;
 	char character;
 
-	lexer_skip_whitespace(lexer);
+	lexer_skip_ignored(lexer);
 
 	start = lexer->current;
 	line = lexer->line;
@@ -171,7 +180,6 @@ Token lexer_next_token(Lexer *lexer) {
 	case ';':
 		return lexer_make_token(TOKEN_SEMICOLON, start, 1, line,
 					column);
-	case '#': return lexer_make_token(TOKEN_HASH, start, 1, line, column);
 	default: return lexer_make_token(TOKEN_INVALID, start, 1, line, column);
 	}
 }
