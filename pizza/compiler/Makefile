@@ -1,7 +1,7 @@
 CC	:= cc
 CFLAGS	:= -std=c11 -Wall -Wextra -Werror -Iinclude
 OUT	:= out
-TARGET	:= $(OUT)/pgcc
+TARGET	:= $(OUT)/pcc
 SRC	:= $(shell find src -name '*.c')
 
 OBJ	:= $(patsubst src/%.c,$(OUT)/%.o,$(SRC))

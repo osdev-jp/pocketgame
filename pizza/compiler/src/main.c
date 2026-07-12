@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
 	Token token;
 
 	if (argc != 2) {
-		fprintf(stderr, "usage: pgcc <input-file>\n");
+		fprintf(stderr, "usage: pcc <input-file>\n");
 		return EXIT_FAILURE;
 	}
 
