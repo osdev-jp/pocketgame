@@ -59,22 +59,30 @@ void statement_destroy(Statement *statement) {
 	if (statement == NULL) return;
 
 	switch (statement->type) {
-	case STATEMENT_EXPRESSION: free(statement->expression.tokens); break;
-	case STATEMENT_VARIABLE: free(statement->variable.tokens); break;
-	case STATEMENT_RETURN: free(statement->return_statement.tokens); break;
-	case STATEMENT_BREAK:
-	case STATEMENT_CONTINUE: break;
+	case STATEMENT_EXPRESSION:
+		expression_destroy(statement->expression.value);
+		break;
+	case STATEMENT_VARIABLE:
+		expression_destroy(statement->variable.initializer);
+		break;
+	case STATEMENT_RETURN:
+		expression_destroy(statement->return_statement.value);
+		break;
+	case STATEMENT_CONTINUE:
+	case STATEMENT_BREAK: break;
 	case STATEMENT_IF:
-		free(statement->if_statement.tokens);
+		expression_destroy(statement->if_statement.condition);
 		statement_destroy(statement->if_statement.branch);
 		statement_destroy(statement->if_statement.else_branch);
 		break;
 	case STATEMENT_WHILE:
-		free(statement->while_statement.tokens);
+		expression_destroy(statement->while_statement.condition);
 		statement_destroy(statement->while_statement.branch);
 		break;
 	case STATEMENT_FOR:
-		free(statement->for_statement.tokens);
+		expression_destroy(statement->for_statement.initializer);
+		expression_destroy(statement->for_statement.condition);
+		expression_destroy(statement->for_statement.update);
 		statement_destroy(statement->for_statement.branch);
 		break;
 	case STATEMENT_BLOCK: statement_list_destroy(&statement->block); break;

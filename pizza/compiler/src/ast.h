@@ -1,7 +1,8 @@
 #ifndef POCKETGAME_AST_H
 #define POCKETGAME_AST_H
-#include "token.h"
 
+#include "expression.h"
+#include "token.h"
 #include <stddef.h>
 
 typedef enum {
@@ -15,6 +16,12 @@ typedef enum {
 	STATEMENT_FOR,
 	STATEMENT_BLOCK,
 } StatementType;
+
+typedef enum {
+	FOR_INITIALIZER_NONE,
+	FOR_INITIALIZER_EXPRESSION,
+	FOR_INITIALIZER_VARIABLE,
+} ForInitializerType;
 
 typedef struct Statement Statement;
 
@@ -30,38 +37,37 @@ struct Statement {
 
 	union {
 		struct {
-			Token *tokens;
-			size_t token_count;
+			Expression *value;
 		} expression;
 
 		struct {
 			Token type;
 			Token name;
-			Token *tokens;
-			size_t token_count;
+			Expression *initializer;
 		} variable;
 
 		struct {
-			Token *tokens;
-			size_t token_count;
+			Expression *value;
 		} return_statement;
 
 		struct {
-			Token *tokens;
-			size_t token_count;
+			Expression *condition;
 			Statement *branch;
 			Statement *else_branch;
 		} if_statement;
 
 		struct {
-			Token *tokens;
-			size_t token_count;
+			ForInitializerType initializer_type;
+			Token variable_type;
+			Token variable_name;
+			Expression *initializer;
+			Expression *condition;
+			Expression *update;
 			Statement *branch;
 		} for_statement;
 
 		struct {
-			Token *tokens;
-			size_t token_count;
+			Expression *condition;
 			Statement *branch;
 		} while_statement;
 

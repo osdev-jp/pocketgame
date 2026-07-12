@@ -11,6 +11,7 @@ typedef struct {
 
 static bool parser_parse_statement(Parser *parser, Statement **statement);
 static bool parser_parse_block_statement(Parser *parser, Statement **statement);
+static bool parser_is_type_name(const Token *token);
 
 static bool token_equals(const Token *token, const char *text) {
 	size_t length;
@@ -439,26 +440,34 @@ static bool parser_parse_block_statement(Parser *parser,
 static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
 	Statement *if_statement;
 	Statement *then_branch;
-	Token *condition_tokens;
-	size_t condition_token_count;
-	size_t line;
 	Statement *else_branch;
+	Expression *condition;
+	Token *tokens;
+	size_t token_count;
+	size_t line;
 
 	line = parser->current.line;
 	parser_advance(parser);
 
-	condition_tokens = NULL;
-	condition_token_count = 0;
+	tokens = NULL;
+	token_count = 0;
 
-	if (!parser_collect_parenthesized_tokens(parser, &condition_tokens,
-						 &condition_token_count)) {
+	if (!parser_collect_parenthesized_tokens(parser, &tokens,
+						 &token_count)) {
 		return false;
 	}
+
+	condition = expression_parse(parser->input_path, tokens, token_count,
+				     &parser->had_error);
+
+	free(tokens);
+
+	if (condition == NULL) { return false; }
 
 	then_branch = NULL;
 
 	if (!parser_parse_statement(parser, &then_branch)) {
-		free(condition_tokens);
+		expression_destroy(condition);
 		return false;
 	}
 
@@ -469,7 +478,7 @@ static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
 		parser_advance(parser);
 
 		if (!parser_parse_statement(parser, &else_branch)) {
-			free(condition_tokens);
+			expression_destroy(condition);
 			statement_destroy(then_branch);
 			return false;
 		}
@@ -481,14 +490,13 @@ static bool parser_parse_if_statement(Parser *parser, Statement **statement) {
 		parser_error_at(parser, &parser->current,
 				"failed to allocate if statement");
 
-		free(condition_tokens);
+		expression_destroy(condition);
 		statement_destroy(then_branch);
 		statement_destroy(else_branch);
 		return false;
 	}
 
-	if_statement->if_statement.tokens = condition_tokens;
-	if_statement->if_statement.token_count = condition_token_count;
+	if_statement->if_statement.condition = condition;
 	if_statement->if_statement.branch = then_branch;
 	if_statement->if_statement.else_branch = else_branch;
 
@@ -500,6 +508,7 @@ static bool parser_parse_while_statement(Parser *parser,
 					 Statement **statement) {
 	Statement *while_statement;
 	Statement *branch;
+	Expression *condition;
 	Token *tokens;
 	size_t token_count;
 	size_t line;
@@ -515,10 +524,17 @@ static bool parser_parse_while_statement(Parser *parser,
 		return false;
 	}
 
+	condition = expression_parse(parser->input_path, tokens, token_count,
+				     &parser->had_error);
+
+	free(tokens);
+
+	if (condition == NULL) { return false; }
+
 	branch = NULL;
 
 	if (!parser_parse_statement(parser, &branch)) {
-		free(tokens);
+		expression_destroy(condition);
 		return false;
 	}
 
@@ -528,23 +544,95 @@ static bool parser_parse_while_statement(Parser *parser,
 		parser_error_at(parser, &parser->current,
 				"failed to allocate while statement");
 
-		free(tokens);
+		expression_destroy(condition);
 		statement_destroy(branch);
 		return false;
 	}
 
-	while_statement->while_statement.tokens = tokens;
-	while_statement->while_statement.token_count = token_count;
+	while_statement->while_statement.condition = condition;
 	while_statement->while_statement.branch = branch;
 
 	*statement = while_statement;
 	return true;
 }
 
+static bool parser_find_for_separators(Parser *parser,
+				       const Token *tokens,
+				       size_t token_count,
+				       size_t *first_separator,
+				       size_t *second_separator) {
+	size_t parenthesis_depth;
+	size_t bracket_depth;
+	size_t separator_count;
+	size_t i;
+
+	parenthesis_depth = 0;
+	bracket_depth = 0;
+	separator_count = 0;
+
+	for (i = 0; i < token_count; i++) {
+		switch (tokens[i].type) {
+		case TOKEN_LEFT_PAREN: parenthesis_depth++; break;
+		case TOKEN_RIGHT_PAREN:
+			if (parenthesis_depth == 0) {
+				parser_error_at(
+					parser, &tokens[i],
+					"unexpected ')' in for statement");
+				return false;
+			}
+
+			parenthesis_depth--;
+			break;
+		case TOKEN_LEFT_BRACKET: bracket_depth++; break;
+		case TOKEN_RIGHT_BRACKET:
+			if (bracket_depth == 0) {
+				parser_error_at(
+					parser, &tokens[i],
+					"unexpected ']' in for statement");
+				return false;
+			}
+
+			bracket_depth--;
+			break;
+		case TOKEN_SEMICOLON:
+			if (parenthesis_depth != 0 || bracket_depth != 0) {
+				break;
+			}
+
+			if (separator_count == 0) {
+				*first_separator = i;
+			} else if (separator_count == 1) {
+				*second_separator = i;
+			}
+
+			separator_count++;
+			break;
+		default: break;
+		}
+	}
+
+	if (separator_count != 2) {
+		parser_error_at(parser,
+				token_count > 0 ? &tokens[0] : &parser->current,
+				"for statement requires two ';' separators");
+		return false;
+	}
+
+	return true;
+}
+
 static bool parser_parse_for_statement(Parser *parser, Statement **statement) {
 	Statement *for_statement;
 	Statement *branch;
+	Expression *initializer;
+	Expression *condition;
+	Expression *update;
 	Token *tokens;
+	Token variable_type;
+	Token variable_name;
+	ForInitializerType initializer_type;
+	size_t first_separator;
+	size_t second_separator;
 	size_t token_count;
 	size_t line;
 
@@ -559,10 +647,103 @@ static bool parser_parse_for_statement(Parser *parser, Statement **statement) {
 		return false;
 	}
 
+	if (!parser_find_for_separators(parser, tokens, token_count,
+					&first_separator, &second_separator)) {
+		free(tokens);
+		return false;
+	}
+
+	initializer_type = FOR_INITIALIZER_NONE;
+	memset(&variable_type, 0, sizeof(variable_type));
+	memset(&variable_name, 0, sizeof(variable_name));
+	initializer = NULL;
+	condition = NULL;
+	update = NULL;
+
+	if (first_separator > 0) {
+		if (first_separator >= 2 && parser_is_type_name(&tokens[0]) &&
+		    tokens[1].type == TOKEN_IDENTIFIER) {
+			initializer_type = FOR_INITIALIZER_VARIABLE;
+			variable_type = tokens[0];
+			variable_name = tokens[1];
+
+			if (first_separator > 2) {
+				if (tokens[2].type != TOKEN_ASSIGN) {
+					parser_error_at(parser, &tokens[2],
+							"expected '=' after "
+							"for variable");
+
+					free(tokens);
+					return false;
+				}
+
+				if (first_separator == 3) {
+					parser_error_at(parser, &tokens[2],
+							"expected initializer "
+							"after '='");
+
+					free(tokens);
+					return false;
+				}
+
+				initializer = expression_parse(
+					parser->input_path, &tokens[3],
+					first_separator - 3,
+					&parser->had_error);
+
+				if (initializer == NULL) {
+					free(tokens);
+					return false;
+				}
+			}
+		} else {
+			initializer_type = FOR_INITIALIZER_EXPRESSION;
+
+			initializer = expression_parse(parser->input_path,
+						       tokens, first_separator,
+						       &parser->had_error);
+
+			if (initializer == NULL) {
+				free(tokens);
+				return false;
+			}
+		}
+	}
+
+	if (second_separator > first_separator + 1) {
+		condition = expression_parse(
+			parser->input_path, &tokens[first_separator + 1],
+			second_separator - first_separator - 1,
+			&parser->had_error);
+
+		if (condition == NULL) {
+			expression_destroy(initializer);
+			free(tokens);
+			return false;
+		}
+	}
+
+	if (token_count > second_separator + 1) {
+		update = expression_parse(
+			parser->input_path, &tokens[second_separator + 1],
+			token_count - second_separator - 1, &parser->had_error);
+
+		if (update == NULL) {
+			expression_destroy(initializer);
+			expression_destroy(condition);
+			free(tokens);
+			return false;
+		}
+	}
+
+	free(tokens);
+
 	branch = NULL;
 
 	if (!parser_parse_statement(parser, &branch)) {
-		free(tokens);
+		expression_destroy(initializer);
+		expression_destroy(condition);
+		expression_destroy(update);
 		return false;
 	}
 
@@ -572,13 +753,19 @@ static bool parser_parse_for_statement(Parser *parser, Statement **statement) {
 		parser_error_at(parser, &parser->current,
 				"failed to allocate for statement");
 
-		free(tokens);
+		expression_destroy(initializer);
+		expression_destroy(condition);
+		expression_destroy(update);
 		statement_destroy(branch);
 		return false;
 	}
 
-	for_statement->for_statement.tokens = tokens;
-	for_statement->for_statement.token_count = token_count;
+	for_statement->for_statement.initializer_type = initializer_type;
+	for_statement->for_statement.variable_type = variable_type;
+	for_statement->for_statement.variable_name = variable_name;
+	for_statement->for_statement.initializer = initializer;
+	for_statement->for_statement.condition = condition;
+	for_statement->for_statement.update = update;
 	for_statement->for_statement.branch = branch;
 
 	*statement = for_statement;
@@ -588,6 +775,7 @@ static bool parser_parse_for_statement(Parser *parser, Statement **statement) {
 static bool parser_parse_return_statement(Parser *parser,
 					  Statement **statement) {
 	Statement *return_statement;
+	Expression *value;
 	Token *tokens;
 	size_t token_count;
 	size_t line;
@@ -602,18 +790,31 @@ static bool parser_parse_return_statement(Parser *parser,
 		return false;
 	}
 
+	value = NULL;
+
+	if (token_count > 0) {
+		value = expression_parse(parser->input_path, tokens,
+					 token_count, &parser->had_error);
+
+		if (value == NULL) {
+			free(tokens);
+			return false;
+		}
+	}
+
+	free(tokens);
+
 	return_statement = statement_create(STATEMENT_RETURN, line);
 
 	if (return_statement == NULL) {
 		parser_error_at(parser, &parser->current,
 				"failed to allocate return statement");
 
-		free(tokens);
+		expression_destroy(value);
 		return false;
 	}
 
-	return_statement->return_statement.tokens = tokens;
-	return_statement->return_statement.token_count = token_count;
+	return_statement->return_statement.value = value;
 
 	*statement = return_statement;
 	return true;
@@ -648,9 +849,12 @@ static bool parser_parse_jump_statement(Parser *parser,
 static bool parser_parse_variable_statement(Parser *parser,
 					    Statement **statement) {
 	Statement *variable_statement;
-	TokenList initializer;
+	Expression *initializer;
+	TokenList initializer_tokens;
+	Token *tokens;
 	Token type;
 	Token name;
+	size_t token_count;
 	size_t line;
 
 	type = parser->current;
@@ -676,8 +880,7 @@ static bool parser_parse_variable_statement(Parser *parser,
 
 	variable_statement->variable.type = type;
 	variable_statement->variable.name = name;
-	variable_statement->variable.tokens = NULL;
-	variable_statement->variable.token_count = 0;
+	variable_statement->variable.initializer = NULL;
 
 	if (parser_match(parser, TOKEN_SEMICOLON)) {
 		*statement = variable_statement;
@@ -690,7 +893,7 @@ static bool parser_parse_variable_statement(Parser *parser,
 		return false;
 	}
 
-	token_list_init(&initializer);
+	token_list_init(&initializer_tokens);
 
 	while (!parser_check(parser, TOKEN_SEMICOLON) &&
 	       !parser_check(parser, TOKEN_EOF)) {
@@ -700,13 +903,14 @@ static bool parser_parse_variable_statement(Parser *parser,
 				parser, &parser->current,
 				"expected ';' after variable declaration");
 
-			token_list_destroy(&initializer);
+			token_list_destroy(&initializer_tokens);
 			statement_destroy(variable_statement);
 			return false;
 		}
 
-		if (!token_list_append(parser, &initializer, parser->current)) {
-			token_list_destroy(&initializer);
+		if (!token_list_append(parser, &initializer_tokens,
+				       parser->current)) {
+			token_list_destroy(&initializer_tokens);
 			statement_destroy(variable_statement);
 			return false;
 		}
@@ -716,13 +920,24 @@ static bool parser_parse_variable_statement(Parser *parser,
 
 	if (!parser_consume(parser, TOKEN_SEMICOLON,
 			    "expected ';' after variable declaration")) {
-		token_list_destroy(&initializer);
+		token_list_destroy(&initializer_tokens);
 		statement_destroy(variable_statement);
 		return false;
 	}
 
-	variable_statement->variable.tokens = token_list_take(
-		&initializer, &variable_statement->variable.token_count);
+	tokens = token_list_take(&initializer_tokens, &token_count);
+
+	initializer = expression_parse(parser->input_path, tokens, token_count,
+				       &parser->had_error);
+
+	free(tokens);
+
+	if (initializer == NULL) {
+		statement_destroy(variable_statement);
+		return false;
+	}
+
+	variable_statement->variable.initializer = initializer;
 
 	*statement = variable_statement;
 	return true;
@@ -731,6 +946,7 @@ static bool parser_parse_variable_statement(Parser *parser,
 static bool parser_parse_expression_statement(Parser *parser,
 					      Statement **statement) {
 	Statement *expression_statement;
+	Expression *value;
 	Token *tokens;
 	size_t token_count;
 	size_t line;
@@ -743,18 +959,32 @@ static bool parser_parse_expression_statement(Parser *parser,
 		return false;
 	}
 
+	if (token_count == 0) {
+		parser_error_at(parser, &parser->previous,
+				"expected expression");
+
+		free(tokens);
+		return false;
+	}
+
+	value = expression_parse(parser->input_path, tokens, token_count,
+				 &parser->had_error);
+
+	free(tokens);
+
+	if (value == NULL) { return false; }
+
 	expression_statement = statement_create(STATEMENT_EXPRESSION, line);
 
 	if (expression_statement == NULL) {
 		parser_error_at(parser, &parser->current,
 				"failed to allocate expression statement");
 
-		free(tokens);
+		expression_destroy(value);
 		return false;
 	}
 
-	expression_statement->expression.tokens = tokens;
-	expression_statement->expression.token_count = token_count;
+	expression_statement->expression.value = value;
 
 	*statement = expression_statement;
 	return true;
