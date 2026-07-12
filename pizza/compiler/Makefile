@@ -57,9 +57,11 @@ endif
 
 CFLAGS	+= $(CONFIG_DEFINES)
 
-.PHONY: all clean fmt run
+.PHONY: all clean fmt run build
 
 all: $(TARGET)
+
+build: all
 
 $(TARGET): $(OBJ)
 	@$(CC) $(CFLAGS) -o $@ $(OBJ)
