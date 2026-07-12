@@ -28,6 +28,15 @@ static char lexer_advance(Lexer *lexer) {
 	return character;
 }
 
+static bool lexer_match(Lexer *lexer, const char expected) {
+	if (lexer_is_at_end(lexer)) { return false; }
+
+	if (lexer_peek(lexer) != expected) { return false; }
+
+	lexer_advance(lexer);
+	return true;
+}
+
 static void lexer_skip_preprocessor_line(Lexer *lexer) {
 	while (!lexer_is_at_end(lexer) && lexer_peek(lexer) != '\n') {
 		lexer_advance(lexer);
@@ -176,10 +185,102 @@ Token lexer_next_token(Lexer *lexer) {
 	case '}':
 		return lexer_make_token(TOKEN_RIGHT_BRACE, start, 1, line,
 					column);
+	case '[':
+		return lexer_make_token(TOKEN_LEFT_BRACKET, start, 1, line,
+					column);
+	case ']':
+		return lexer_make_token(TOKEN_RIGHT_BRACKET, start, 1, line,
+					column);
 	case ',': return lexer_make_token(TOKEN_COMMA, start, 1, line, column);
 	case ';':
 		return lexer_make_token(TOKEN_SEMICOLON, start, 1, line,
 					column);
+	case ':': return lexer_make_token(TOKEN_COLON, start, 1, line, column);
+	case '?':
+		return lexer_make_token(TOKEN_QUESTION, start, 1, line, column);
+	case '.': return lexer_make_token(TOKEN_DOT, start, 1, line, column);
+	case '+':
+		if (lexer_match(lexer, '+')) {
+			return lexer_make_token(TOKEN_INCREMENT, start, 2, line,
+						column);
+		}
+
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_PLUS_ASSIGN, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_PLUS, start, 1, line, column);
+	case '-':
+		if (lexer_match(lexer, '-')) {
+			return lexer_make_token(TOKEN_DECREMENT, start, 2, line,
+						column);
+		}
+
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_MINUS_ASSIGN, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_MINUS, start, 1, line, column);
+	case '*':
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_STAR_ASSIGN, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_STAR, start, 1, line, column);
+	case '/':
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_SLASH_ASSIGN, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_SLASH, start, 1, line, column);
+	case '%':
+		return lexer_make_token(TOKEN_PERCENT, start, 1, line, column);
+	case '=':
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_EQUAL, start, 2, line,
+						column);
+		}
+
+		return lexer_make_token(TOKEN_ASSIGN, start, 1, line, column);
+	case '!':
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_NOT_EQUAL, start, 2, line,
+						column);
+		}
+
+		return lexer_make_token(TOKEN_NOT, start, 1, line, column);
+	case '<':
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_LESS_EQUAL, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_LESS, start, 1, line, column);
+	case '>':
+		if (lexer_match(lexer, '=')) {
+			return lexer_make_token(TOKEN_GREATER_EQUAL, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_GREATER, start, 1, line, column);
+	case '&':
+		if (lexer_match(lexer, '&')) {
+			return lexer_make_token(TOKEN_LOGICAL_AND, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_AND, start, 1, line, column);
+	case '|':
+		if (lexer_match(lexer, '|')) {
+			return lexer_make_token(TOKEN_LOGICAL_OR, start, 2,
+						line, column);
+		}
+
+		return lexer_make_token(TOKEN_OR, start, 1, line, column);
 	default: return lexer_make_token(TOKEN_INVALID, start, 1, line, column);
 	}
 }
