@@ -29,7 +29,7 @@ INCLUDEDIR	:= $(PREFIX)/include
 
 .PHONY: all run clean install fmt osero gomoku
 
-all: $(TARGET) fmt
+all: $(TARGET)
 
 $(TARGET): $(OBJ)
 	mkdir -p "$(OUT)"
