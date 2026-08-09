@@ -1,5 +1,5 @@
 # PocketGame library
-PocketGame)のアセンブラをそのままCとして実行できるライブラリです。
+PocketGameのアセンブラをそのままCとして実行できるライブラリです。
 
 ## ビルド
 
