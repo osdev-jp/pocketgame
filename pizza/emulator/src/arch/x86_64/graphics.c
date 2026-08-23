@@ -1,4 +1,4 @@
-#include "../include/graphics.h"
+#include "../../../include/graphics.h"
 
 #include <SDL2/SDL.h>
 #include <stdio.h>

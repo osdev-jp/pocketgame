@@ -7,7 +7,19 @@ use Cwd qw(abs_path);
 use File::Basename qw(basename);
 use File::Path qw(make_path);
 use FindBin;
+use Getopt::Long qw(GetOptions);
 use Text::ParseWords qw(shellwords);
+
+sub print_usage {
+	my ($handle) = @_;
+
+	print {$handle} "usage: $0 [--arch <architecture>] <source.c|source.pas>\n";
+	print {$handle} "\n";
+	print {$handle} "options:\n";
+	print {$handle} "  -a, --arch <architecture>  Target architecture\n";
+	print {$handle} "                             Supported: x86_64, pg_rv32\n";
+	print {$handle} "  -h, --help                 Show this help\n";
+}
 
 sub run_command {
 	my (@command) = @_;
@@ -44,10 +56,34 @@ sub command_output {
 	return shellwords($output);
 }
 
-my $source_argument = shift
-	or die "usage: $0 <source.c|source.pas>\n";
+my $architecture = "x86_64";
+my $show_help = 0;
 
-die "unexpected argument: @ARGV\n" if @ARGV;
+GetOptions(
+	"arch|a=s" => \$architecture,
+	"help|h" => \$show_help,
+) or do {
+	print_usage(*STDERR);
+	exit 1;
+};
+
+if ($show_help) {
+	print_usage(*STDOUT);
+	exit 0;
+}
+
+die "unsupported architecture: $architecture\n"
+	unless $architecture eq "x86_64"
+		|| $architecture eq "pg_rv32";
+
+my $source_argument = shift
+	or do {
+		print_usage(*STDERR);
+		exit 1;
+	};
+
+die "unexpected argument: @ARGV\n"
+	if @ARGV;
 
 my $source = abs_path($source_argument)
 	or die "source not found: $source_argument\n";
@@ -57,29 +93,81 @@ die "unsupported source file: $source\n"
 
 my $emulator_dir = abs_path($FindBin::Bin);
 my $compiler_dir = abs_path("$emulator_dir/../compiler");
-my $lib_dir = abs_path("$emulator_dir/include");
-my $lib_src_dir = abs_path("$emulator_dir/src");
+my $include_dir = abs_path("$emulator_dir/include");
+my $src_dir = abs_path("$emulator_dir/src");
 
-my $out_dir = "$emulator_dir/out";
+my $out_dir = "$emulator_dir/out/$architecture";
 my $pcc = "$compiler_dir/out/pcc";
-my $pocketgame_header = "$lib_dir/pocketgame.h";
-my $pocketgame_runtime = "$lib_src_dir/pocketgame.c";
-my $pocketgame_main = "$lib_src_dir/pocketgame_main.c";
-my $pocketgame_library = "$out_dir/libpocketgame.a";
+my $pocketgame_header = "$include_dir/pocketgame.h";
+my $pocketgame_main = "$src_dir/pocketgame_main.c";
+my $pocketgame_library =
+	"$emulator_dir/target/$architecture/libpocketgame.a";
+
+my $cc;
+my $ar;
+my @architecture_cflags;
+my @architecture_ldflags;
+my @platform_cflags;
+my @platform_libs;
+
+if ($architecture eq "x86_64") {
+	$cc = $ENV{"X86_64_CC"} // "gcc";
+	$ar = $ENV{"X86_64_AR"} // "ar";
+
+	@architecture_cflags = shellwords(
+		$ENV{"X86_64_CFLAGS"} // ""
+	);
+
+	@architecture_ldflags = shellwords(
+		$ENV{"X86_64_LDFLAGS"} // ""
+	);
+
+	@platform_cflags = command_output(
+		"sdl2-config",
+		"--cflags",
+	);
+
+	@platform_libs = command_output(
+		"sdl2-config",
+		"--libs",
+	);
+} else {
+	$cc = $ENV{"PG_RV32_CC"} // "riscv32-unknown-elf-gcc";
+	$ar = $ENV{"PG_RV32_AR"} // "riscv32-unknown-elf-ar";
+
+	@architecture_cflags = shellwords(
+		$ENV{"PG_RV32_CFLAGS"} // ""
+	);
+
+	@architecture_ldflags = shellwords(
+		$ENV{"PG_RV32_LDFLAGS"} // ""
+	);
+
+	@platform_cflags = ();
+	@platform_libs = ();
+}
 
 make_path($out_dir);
 
 die "missing file: $pocketgame_header\n"
 	unless -f $pocketgame_header;
 
-die "missing file: $pocketgame_runtime\n"
-	unless -f $pocketgame_runtime;
-
 die "missing file: $pocketgame_main\n"
 	unless -f $pocketgame_main;
 
-print "Building PocketGame emulator...\n";
-run_command("make", "-C", $emulator_dir, "all");
+print "Building PocketGame library for $architecture...\n";
+run_command(
+	"make",
+	"-C",
+	$emulator_dir,
+	"ARCH=$architecture",
+	"CC=$cc",
+	"AR=$ar",
+	"all",
+);
+
+die "missing library: $pocketgame_library\n"
+	unless -f $pocketgame_library;
 
 my $name = basename($source);
 $name =~ s/\.(?:c|pas)\z//i;
@@ -88,14 +176,19 @@ my $pas_source;
 
 if ($source =~ /\.c\z/i) {
 	print "Building pcc...\n";
-	run_command("make", "-C", $compiler_dir, "all");
+	run_command(
+		"make",
+		"-C",
+		$compiler_dir,
+		"all",
+	);
 
 	die "pcc not found: $pcc\n"
 		unless -x $pcc;
 
 	$pas_source = "$out_dir/$name.pas";
 
-	print "Compiling $source...\n";
+	print "Compiling $source with pcc...\n";
 	run_command(
 		$pcc,
 		"-S",
@@ -107,21 +200,25 @@ if ($source =~ /\.c\z/i) {
 	$pas_source = $source;
 }
 
-my $target = "$out_dir/$name";
-my @sdl_cflags = command_output("sdl2-config", "--cflags");
-my @sdl_libs = command_output("sdl2-config", "--libs");
+my $target;
 
-print "Building $target...\n";
+if ($architecture eq "x86_64") {
+	$target = "$out_dir/$name";
+} else {
+	$target = "$out_dir/$name.elf";
+}
+
+print "Building $target for $architecture...\n";
 run_command(
-	"gcc",
+	$cc,
 	"-Wall",
 	"-Wextra",
 	"-Werror",
 	"-Wno-unused-label",
 	"-std=c11",
-	"-I$emulator_dir/include",
-	"-I$lib_dir",
-	@sdl_cflags,
+	@architecture_cflags,
+	@platform_cflags,
+	"-I$include_dir",
 	"-include",
 	"pocketgame.h",
 	"-x",
@@ -130,12 +227,16 @@ run_command(
 	"-x",
 	"none",
 	$pocketgame_main,
-	$pocketgame_runtime,
 	$pocketgame_library,
-	@sdl_libs,
+	@architecture_ldflags,
+	@platform_libs,
 	"-o",
 	$target,
 );
 
-print "Running $target...\n";
-run_command($target);
+if ($architecture eq "x86_64") {
+	print "Running $target...\n";
+	run_command($target);
+} else {
+	print "Built pg_rv32 executable: $target\n";
+}
